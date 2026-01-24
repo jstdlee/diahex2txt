@@ -1,0 +1,40 @@
+[project]
+name = "diahex2txt"
+version = "1.0.0"
+description = "Decode hex-encoded Diameter messages into human-readable text"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "jstdlee", email = "302753485+jstdlee@users.noreply.github.com"},
+]
+license = {text = "MIT"}
+keywords = ["diameter", "protocol", "decoder", "3gpp", "lte", "telecom"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Telecommunications Industry",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Networking",
+]
+dependencies = [
+    "python-diameter>=0.7.1",
+    "typer>=0.9.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/jstdlee/diahex2txt"
+Repository = "https://github.com/jstdlee/diahex2txt"
+Issues = "https://github.com/jstdlee/diahex2txt/issues"
+
+[project.scripts]
+diahex2txt = "diahex2txt.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+]

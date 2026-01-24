@@ -1,0 +1,14 @@
+[project]
+name = "diahex2txt"
+version = "0.1.0"
+description = "CLI tool to decode Diameter messages from HEX input"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ipaddress>=1.0.23",
+    "python-diameter>=0.8.4",
+    "typer>=0.21.1",
+]
+
+[project.scripts]
+diahex2txt = "diahex2txt.main:app"
