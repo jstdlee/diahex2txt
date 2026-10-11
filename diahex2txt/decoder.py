@@ -6,129 +6,104 @@ from ipaddress import ip_address
 from typing import List, Optional, Tuple
 from diameter.message.avp.dictionary import AVP_DICTIONARY, AVP_VENDOR_DICTIONARY
 
-# Command code names. Base commands apply to every application.
+# Command codes. A request and its answer share one code (RFC 6733 section 3);
+# the R flag in the header tells them apart.
+# code -> (request abbreviation, answer abbreviation, base name)
 BASE_COMMAND_CODES = {
-    257: "CER (Capabilities-Exchange-Request)",
-    258: "CEA (Capabilities-Exchange-Answer)",
-    265: "AAR (AA-Request)",
-    266: "AAA (AA-Answer)",
-    268: "DER (Diameter-EAP-Request)",
-    271: "ACR (Accounting-Request)",
-    272: "CCR (Credit-Control-Request)",
-    273: "CCA (Credit-Control-Answer)",
-    274: "ASR (Abort-Session-Request)",
-    275: "ASA (Abort-Session-Answer)",
-    280: "DWR (Device-Watchdog-Request)",
-    281: "DWA (Device-Watchdog-Answer)",
-    282: "DPR (Disconnect-Peer-Request)",
-    283: "DPA (Disconnect-Peer-Answer)",
-    291: "STR (Session-Termination-Request)",
-    292: "STA (Session-Termination-Answer)",
-    8388620: "RAR (Re-Auth-Request)",
-    8388621: "RAA (Re-Auth-Answer)",
+    257: ("CER", "CEA", "Capabilities-Exchange"),
+    258: ("RAR", "RAA", "Re-Auth"),
+    265: ("AAR", "AAA", "AA"),
+    268: ("DER", "DEA", "Diameter-EAP"),
+    271: ("ACR", "ACA", "Accounting"),
+    272: ("CCR", "CCA", "Credit-Control"),
+    274: ("ASR", "ASA", "Abort-Session"),
+    275: ("STR", "STA", "Session-Termination"),
+    280: ("DWR", "DWA", "Device-Watchdog"),
+    282: ("DPR", "DPA", "Disconnect-Peer"),
 }
 
-# Command names that depend on the application (same code, different meaning).
+# Commands that depend on the application (same code, different meaning).
 APP_COMMAND_CODES = {
-    # S6a/S6d
+    # S6a/S6d (TS 29.272)
     16777251: {
-        316: "ULR (Update-Location-Request)",
-        317: "ULA (Update-Location-Answer)",
-        318: "AIR (Authentication-Information-Request)",
-        319: "AIA (Authentication-Information-Answer)",
-        320: "IDR (Insert-Subscriber-Data-Request)",
-        321: "IDA (Insert-Subscriber-Data-Answer)",
-        322: "DSR (Delete-Subscriber-Data-Request)",
-        323: "DSA (Delete-Subscriber-Data-Answer)",
-        324: "PUR (Purge-UE-Request)",
-        325: "PUA (Purge-UE-Answer)",
-        326: "RSR (Reset-Request)",
-        327: "RSA (Reset-Answer)",
-        328: "NR (Notify-Request)",
-        329: "NA (Notify-Answer)",
+        316: ("ULR", "ULA", "Update-Location"),
+        317: ("CLR", "CLA", "Cancel-Location"),
+        318: ("AIR", "AIA", "Authentication-Information"),
+        319: ("IDR", "IDA", "Insert-Subscriber-Data"),
+        320: ("DSR", "DSA", "Delete-Subscriber-Data"),
+        321: ("PUR", "PUA", "Purge-UE"),
+        322: ("RSR", "RSA", "Reset"),
+        323: ("NR", "NA", "Notify"),
     },
-    # Cx/Dx
+    # Cx/Dx (TS 29.229)
     16777216: {
-        300: "UAR (User-Authorization-Request)",
-        301: "UAA (User-Authorization-Answer)",
-        302: "SAR (Server-Assignment-Request)",
-        303: "SAA (Server-Assignment-Answer)",
-        304: "LIR (Location-Info-Request)",
-        305: "LIA (Location-Info-Answer)",
-        306: "MAR (Multimedia-Auth-Request)",
-        307: "MAA (Multimedia-Auth-Answer)",
-        308: "RTR (Registration-Termination-Request)",
-        309: "RTA (Registration-Termination-Answer)",
-        310: "PPR (Push-Profile-Request)",
-        311: "PPA (Push-Profile-Answer)",
+        300: ("UAR", "UAA", "User-Authorization"),
+        301: ("SAR", "SAA", "Server-Assignment"),
+        302: ("LIR", "LIA", "Location-Info"),
+        303: ("MAR", "MAA", "Multimedia-Auth"),
+        304: ("RTR", "RTA", "Registration-Termination"),
+        305: ("PPR", "PPA", "Push-Profile"),
     },
-    # SWx
+    # SWx (TS 29.273)
     16777265: {
-        300: "SAR (Server-Assignment-Request)",
-        301: "SAA (Server-Assignment-Answer)",
-        303: "MAR (Multimedia-Auth-Request)",
-        304: "MAA (Multimedia-Auth-Answer)",
-        305: "RTR (Registration-Termination-Request)",
-        306: "RTA (Registration-Termination-Answer)",
-        307: "PPR (Push-Profile-Request)",
-        308: "PPA (Push-Profile-Answer)",
+        301: ("SAR", "SAA", "Server-Assignment"),
+        303: ("MAR", "MAA", "Multimedia-Auth"),
+        304: ("RTR", "RTA", "Registration-Termination"),
+        305: ("PPR", "PPA", "Push-Profile"),
     },
-    # Sh
+    # Sh (TS 29.329)
     16777217: {
-        306: "UDR (User-Data-Request)",
-        307: "UDA (User-Data-Answer)",
-        308: "PUR (Profile-Update-Request)",
-        309: "PUA (Profile-Update-Answer)",
-        310: "SNR (Subscribe-Notifications-Request)",
-        311: "SNA (Subscribe-Notifications-Answer)",
-        312: "PNR (Push-Notification-Request)",
-        313: "PNA (Push-Notification-Answer)",
+        306: ("UDR", "UDA", "User-Data"),
+        307: ("PUR", "PUA", "Profile-Update"),
+        308: ("SNR", "SNA", "Subscribe-Notifications"),
+        309: ("PNR", "PNA", "Push-Notification"),
     },
-    # S13
+    # S13/S13' (TS 29.272)
     16777252: {
-        324: "ECR (ME-Identity-Check-Request)",
-        325: "ECA (ME-Identity-Check-Answer)",
+        324: ("ECR", "ECA", "ME-Identity-Check"),
     },
 }
 
-# Application ID descriptions - 3GPP LTE Interfaces
+# Application ID descriptions (IANA Diameter Application IDs)
 APPLICATION_IDS = {
     # Base Diameter Applications
     0: "Diameter Common Messages",
     1: "NASREQ",
     2: "Mobile IPv4",
     3: "Diameter Base Accounting",
-    4: "Diameter Credit Control (Gy/Gz)",
+    4: "Diameter Credit Control (Gy/Ro)",
     5: "EAP",
     6: "SIP",
-    
+
     # 3GPP Interfaces
     16777216: "Cx/Dx (3GPP IMS Subscription)",
     16777217: "Sh (3GPP AS-HSS)",
-    16777222: "Ro (3GPP Online Charging)",
-    16777229: "SWm (3GPP WLAN-AAA)",
+    16777219: "Wx (3GPP WLAN-AAA/HSS)",
+    16777222: "Gq (3GPP Policy Control)",
+    16777223: "Gmb (3GPP GGSN-BM-SC)",
+    16777229: "Rx Release 6 (3GPP AF-PCRF)",
+    16777230: "Pr (3GPP Presence)",
+    16777236: "Rx (3GPP AF-PCRF)",
     16777238: "Gx (3GPP Policy Control)",
-    16777265: "SWx (3GPP WLAN Authentication)",
+    16777250: "STa (3GPP Trusted WLAN Access)",
     16777251: "S6a/S6d (3GPP Mobility Management)",
     16777252: "S13/S13' (3GPP ME Identity Check)",
-    16777261: "S6c (3GPP SMS)",
-    16777264: "SGd/Gdd (3GPP SGSN/GGSN)",
+    16777255: "SLg (3GPP Location Services)",
+    16777264: "SWm (3GPP ePDG-AAA)",
+    16777265: "SWx (3GPP WLAN Authentication)",
+    16777266: "Gxx (3GPP Gateway Control)",
     16777267: "S9 (3GPP Roaming Policy)",
-    16777268: "S6b (3GPP PDN GW-3GPP AAA)",
-    16777272: "SLg (3GPP Location Services)",
-    16777291: "Sy (3GPP Policy Counters)",
-    16777302: "Rx (3GPP AF-PCRF)",
-    16777303: "Gxx (3GPP Trusted WLAN)",
-    16777318: "S6m (3GPP MTC)",
-    16777334: "T6a/T6b (3GPP SCEF)",
-    16777335: "S6t (3GPP HSS-IWK-SCEF)",
-    
-    # Additional 3GPP Interfaces
-    16777219: "Pr (3GPP Presence)",
-    16777250: "STa (3GPP Trusted WLAN Access)",
-    16777223: "Gmb (3GPP GGSN-BM-SC)",
-    16777281: "Mm10 (3GPP IMS Service Control)",
-    16777308: "S15 (3GPP CS-PS Coordination)",
+    16777272: "S6b (3GPP PDN GW-3GPP AAA)",
+    16777291: "SLh (3GPP Location Services)",
+    16777302: "Sy (3GPP Policy Counters)",
+    16777303: "Sd (3GPP TDF)",
+    16777308: "S7a (3GPP Policy Control)",
+    16777310: "S6m (3GPP MTC)",
+    16777312: "S6c (3GPP SMS)",
+    16777313: "SGd/Gdd (3GPP SGSN/GGSN)",
+    16777318: "S15 (3GPP Congestion Management)",
+    16777345: "S6t (3GPP HSS-SCEF)",
+    16777346: "T6a/T6b (3GPP SCEF-MME/SGSN)",
 }
 
 # 3GPP Vendor ID (hidden in output for cleaner display)
@@ -139,8 +114,12 @@ MAX_DEPTH = 16
 _NTP_EPOCH = datetime(1900, 1, 1, tzinfo=timezone.utc)
 
 
-def command_name(app_id: int, code: int) -> str:
-    return APP_COMMAND_CODES.get(app_id, {}).get(code) or BASE_COMMAND_CODES.get(code, "Unknown")
+def command_name(app_id: int, code: int, request: bool = True) -> str:
+    entry = APP_COMMAND_CODES.get(app_id, {}).get(code) or BASE_COMMAND_CODES.get(code)
+    if not entry:
+        return "Unknown"
+    req, ans, base = entry
+    return f"{req} ({base}-Request)" if request else f"{ans} ({base}-Answer)"
 
 
 class _Avp:
@@ -209,7 +188,7 @@ class DiameterDecoder:
             f"  Version:      {version}",
             f"  Length:       {length}",
             f"  Flags:        {flags:#04x} ({flags_str})",
-            f"  Code:         {code} - {command_name(app_id, code)}",
+            f"  Code:         {code} - {command_name(app_id, code, bool(flags & 0x80))}",
             f"  App ID:       {app_id} - {APPLICATION_IDS.get(app_id, 'Unknown')}",
             f"  Hop-by-Hop:   {hbh:#010x}",
             f"  End-to-End:   {e2e:#010x}",

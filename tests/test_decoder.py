@@ -119,7 +119,7 @@ def test_padding_between_avps():
 
 
 @pytest.mark.parametrize("name,needle", [
-    ("gy_ccr", "CCR"), ("gy_cca", "CCA"), ("gx_ccr", "Gx"), ("gx_cca", "Charging-Rule-Name"),
+    ("gy_ccr", "CCR (Credit-Control-Request)"), ("gy_cca", "CCA (Credit-Control-Answer)"), ("gx_ccr", "Gx"), ("gx_cca", "Charging-Rule-Name"),
     ("s6a_ulr", "ULR (Update-Location-Request)"), ("s6a_ula", "ULA (Update-Location-Answer)"),
     ("cx_uar", "UAR (User-Authorization-Request)"), ("swx_mar", "MAR (Multimedia-Auth-Request)"),
 ])
@@ -133,5 +133,32 @@ def test_interface_samples(name, needle):
 
 
 def test_same_code_differs_per_application():
-    assert "SAR" in dec(message(300, 16777265, base()).hex())  # SWx
     assert "UAR" in dec(message(300, 16777216, base()).hex())  # Cx
+    assert "SAR" in dec(message(301, 16777265, base()).hex())  # SWx
+    assert "SAR" in dec(message(301, 16777216, base()).hex())  # Cx
+    assert "UDR" in dec(message(306, 16777217, base()).hex())  # Sh
+    assert "PUR" in dec(message(307, 16777217, base()).hex())  # Sh
+    assert "PUR" in dec(message(321, 16777251, base()).hex())  # S6a
+
+
+@pytest.mark.parametrize("app,code,req,ans", [
+    (0, 257, "CER (Capabilities-Exchange-Request)", "CEA (Capabilities-Exchange-Answer)"),
+    (0, 258, "RAR (Re-Auth-Request)", "RAA (Re-Auth-Answer)"),
+    (0, 271, "ACR (Accounting-Request)", "ACA (Accounting-Answer)"),
+    (4, 272, "CCR (Credit-Control-Request)", "CCA (Credit-Control-Answer)"),
+    (0, 274, "ASR (Abort-Session-Request)", "ASA (Abort-Session-Answer)"),
+    (0, 275, "STR (Session-Termination-Request)", "STA (Session-Termination-Answer)"),
+    (0, 280, "DWR (Device-Watchdog-Request)", "DWA (Device-Watchdog-Answer)"),
+    (0, 282, "DPR (Disconnect-Peer-Request)", "DPA (Disconnect-Peer-Answer)"),
+    (16777251, 316, "ULR (Update-Location-Request)", "ULA (Update-Location-Answer)"),
+    (16777251, 318, "AIR (Authentication-Information-Request)", "AIA (Authentication-Information-Answer)"),
+    (16777216, 303, "MAR (Multimedia-Auth-Request)", "MAA (Multimedia-Auth-Answer)"),
+])
+def test_request_and_answer_share_code(app, code, req, ans):
+    # RFC 6733 section 3: the R flag, not the command code, tells them apart
+    assert f"Code:         {code} - {req}" in dec(message(code, app, base(), request=True).hex())
+    assert f"Code:         {code} - {ans}" in dec(message(code, app, base(), request=False).hex())
+
+
+def test_unknown_command_code():
+    assert "Code:         9999 - Unknown" in dec(message(9999, 0, base()).hex())

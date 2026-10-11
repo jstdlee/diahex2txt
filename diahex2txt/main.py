@@ -23,7 +23,8 @@ def decode(
         text = " ".join(hex_input)
     result = DiameterDecoder().decode(text)
     print(result)
-    if result.startswith("Error"):
+    # Errors can follow good messages in a multi-message stream, so check every line
+    if any(line.startswith("Error") for line in result.splitlines()):
         raise typer.Exit(code=1)
 
 

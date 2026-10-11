@@ -11,7 +11,7 @@ A powerful CLI tool to decode hex-encoded Diameter protocol messages into human-
 - ✅ **Complete AVP Decoding** - Decodes all AVPs in their original wire order
 - 🔍 **Smart String Detection** - Automatically decodes UTF-8 strings from bytes
 - 📊 **Hierarchical Display** - Shows nested grouped AVPs with proper indentation
-- 🏷️ **Protocol Descriptions** - Human-readable command codes and application IDs (60+ commands, 30+ interfaces)
+- 🏷️ **Protocol Descriptions** - Human-readable command codes and application IDs (30+ command pairs, 30+ interfaces)
 - 🎯 **Clean Output** - Simplified vendor ID display (hides 3GPP vendor ID 10415)
 - 🔧 **Full 3GPP Support** - Gx, Gy, Rx, S6a/S6d, S9, Sy, SWx, Cx/Dx, Sh, and more!
 
@@ -108,7 +108,7 @@ Diameter Header:
   Length:       272
   Flags:        0xc0 (Request, Proxiable)
   Code:         318 - AIR (Authentication-Information-Request)
-  App ID:       16777251 - S6a/S6d (3GPP)
+  App ID:       16777251 - S6a/S6d (3GPP Mobility Management)
   Hop-by-Hop:   0xb3de8609
   End-to-End:   0x5581c375
 
@@ -116,18 +116,21 @@ AVPs:
   Session-Id (Code: 263): string-s6a;1407662655052005491;1271062565;69307ee9
   Origin-Host (Code: 264): string
   Origin-Realm (Code: 296): string
+  Origin-State-Id (Code: 278): 1620183172
   User-Name (Code: 1): 999991234567810
+  Auth-Session-State (Code: 277): 1
   Visited-PLMN-Id (Code: 1407): 0x00f110
   Requested-EUTRAN-Authentication-Info (Code: 1408)
     Number-Of-Requested-Vectors (Code: 1410): 1
     Immediate-Response-Preferred (Code: 1412): 0
-  ...
+  Destination-Realm (Code: 283): magma.com
+  Destination-Host (Code: 293): magma-fedgw.magma.com
 ```
 
 #### 2. Gy Credit Control Request (CCR)
 
 ```bash
-uv run -m diahex2txt 0100004080000118000000004d8db8f39fbb2d5f000001084000000e737472696e670000000001284000000e737472696e670000000001164000000c60920884
+uv run -m diahex2txt 010000c4c0000110000000041122334455667788000001074000000e736573733b3100000000010840000015612e6578616d706c652e636f6d00000000000128400000136578616d706c652e636f6d00000001024000000c00000004000001cd40000016333232353140336770702e6f72670000000001a04000000c000000010000019f4000000c00000000000001c840000038000001b04000000c00000064000001b540000024000001a44000000c00000e10000001a5400000100000000006400000
 ```
 
 **Output:**
@@ -135,25 +138,45 @@ uv run -m diahex2txt 0100004080000118000000004d8db8f39fbb2d5f000001084000000e737
 ```
 Diameter Header:
   Version:      1
-  Length:       64
-  Flags:        0x80 (Request)
-  Code:         280 - DWR (Device-Watchdog-Request)
-  App ID:       0 - Diameter Common Messages
-  Hop-by-Hop:   0x4d8db8f3
-  End-to-End:   0x9fbb2d5f
+  Length:       196
+  Flags:        0xc0 (Request, Proxiable)
+  Code:         272 - CCR (Credit-Control-Request)
+  App ID:       4 - Diameter Credit Control (Gy/Ro)
+  Hop-by-Hop:   0x11223344
+  End-to-End:   0x55667788
 
 AVPs:
-  Origin-Host (Code: 264): string
-  Origin-Realm (Code: 296): string
-  Origin-State-Id (Code: 278): 1620183172
+  Session-Id (Code: 263): sess;1
+  Origin-Host (Code: 264): a.example.com
+  Origin-Realm (Code: 296): example.com
+  Auth-Application-Id (Code: 258): 4
+  Service-Context-Id (Code: 461): 32251@3gpp.org
+  CC-Request-Type (Code: 416): 1
+  CC-Request-Number (Code: 415): 0
+  Multiple-Services-Credit-Control (Code: 456)
+    Rating-Group (Code: 432): 100
+    Requested-Service-Unit (Code: 437)
+      CC-Time (Code: 420): 3600
+      CC-Total-Octets (Code: 421): 104857600
 ```
+
+#### 3. Stdin, files and several messages
+
+Pass `-` (or no argument) to read stdin. Use a redirect for a file. Several concatenated messages decode as `=== Message N ===` blocks. Whitespace and `0x` prefixes are accepted. The exit code is 1 on any error.
+
+```bash
+uv run -m diahex2txt < message.hex
+echo 0100001480000110000000040000000000000000 | uv run -m diahex2txt -
+```
+
+The command name follows RFC 6733: a request and its answer share one command code, and the R flag selects `CCR` or `CCA`.
 
 ## Development
 
-### Running Tests (not working)
+### Running Tests
 
 ```bash
-uv run pytest
+uv run --with pytest pytest
 ```
 
 ### Project Structure
