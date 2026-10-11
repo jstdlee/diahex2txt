@@ -62,6 +62,45 @@ APP_COMMAND_CODES = {
     16777252: {
         324: ("ECR", "ECA", "ME-Identity-Check"),
     },
+    # Mobile IPv4 (RFC 4004)
+    2: {
+        260: ("AMR", "AMA", "AA-Mobile-Node"),
+        262: ("HAR", "HAA", "Home-Agent-MIP"),
+    },
+    # SIP (RFC 4740)
+    6: {
+        283: ("UAR", "UAA", "User-Authorization"),
+        284: ("SAR", "SAA", "Server-Assignment"),
+        285: ("LIR", "LIA", "Location-Info"),
+        286: ("MAR", "MAA", "Multimedia-Auth"),
+        287: ("RTR", "RTA", "Registration-Termination"),
+        288: ("PPR", "PPA", "Push-Profile"),
+    },
+}
+
+# 3GPP commands in the range 8388608 and up. These codes are unique, so the
+# application ID is not needed. Names follow the Wireshark Diameter dictionary.
+VENDOR_COMMAND_CODES = {
+    8388620: ("PLR", "PLA", "Provide-Location"),            # SLg, TS 29.172
+    8388621: ("LRR", "LRA", "Location-Report"),             # SLg, TS 29.172
+    8388622: ("RIR", "RIA", "LCS-Routing-Info"),            # SLh, TS 29.173
+    8388633: ("SLR", "SLA", "Ericsson-SL"),                 # Ericsson Sy
+    8388634: ("SNR", "SNA", "Ericsson-SN"),                 # Ericsson Sy
+    8388635: ("SLR", "SLA", "Spending-Limit"),              # Sy, TS 29.219
+    8388636: ("SNR", "SNA", "Spending-Status-Notification"),  # Sy, TS 29.219
+    8388637: ("TSR", "TSA", "TDF-Session"),                 # Sd, TS 29.212
+    8388638: ("UVR", "UVA", "Update-VCSG-Location"),        # S6a, TS 29.272
+    8388639: ("DAR", "DAA", "Device-Action"),               # S6t, TS 29.336
+    8388640: ("DNR", "DNA", "Device-Notification"),         # S6t, TS 29.336
+    8388641: ("SIR", "SIA", "Subscriber-Information"),      # S6a/S6m, TS 29.336
+    8388642: ("CVR", "CVA", "Cancel-VCSG-Location"),        # S6a, TS 29.272
+    8388643: ("TRR", "TRA", "Device-Trigger"),              # T4, TS 29.337
+    8388644: ("DRR", "DRA", "Delivery-Report"),             # T4, TS 29.337
+    8388645: ("OFR", "OFA", "MO-Forward-Short-Message"),    # SGd, TS 29.338
+    8388646: ("TFR", "TFA", "MT-Forward-Short-Message"),    # SGd, TS 29.338
+    8388647: ("SRR", "SRA", "Send-Routing-Info-for-SM"),    # S6c, TS 29.338
+    8388648: ("ALR", "ALA", "Alert-Service-Centre"),        # S6c, TS 29.338
+    8388649: ("RDR", "RDA", "Report-SM-Delivery-Status"),   # S6c, TS 29.338
 }
 
 # Application ID descriptions (IANA Diameter Application IDs)
@@ -74,15 +113,28 @@ APPLICATION_IDS = {
     4: "Diameter Credit Control (Gy/Ro)",
     5: "EAP",
     6: "SIP",
+    7: "Mobile IPv6 IKE",
+    8: "Mobile IPv6 Auth",
+    9: "QoS",
+    10: "Capabilities Update",
+    11: "IKE SK",
+    12: "NAT Control",
+    13: "ERP",
 
     # 3GPP Interfaces
     16777216: "Cx/Dx (3GPP IMS Subscription)",
     16777217: "Sh (3GPP AS-HSS)",
+    16777218: "Re/Rf (3GPP)",
     16777219: "Wx (3GPP WLAN-AAA/HSS)",
+    16777220: "Zn (3GPP)",
+    16777221: "Zh (3GPP)",
     16777222: "Gq (3GPP Policy Control)",
     16777223: "Gmb (3GPP GGSN-BM-SC)",
     16777229: "Rx Release 6 (3GPP AF-PCRF)",
     16777230: "Pr (3GPP Presence)",
+    16777224: "Gx (3GPP)",
+    16777225: "Gx over Gy (3GPP)",
+    16777226: "MM10 (3GPP)",
     16777236: "Rx (3GPP AF-PCRF)",
     16777238: "Gx (3GPP Policy Control)",
     16777250: "STa (3GPP Trusted WLAN Access)",
@@ -93,21 +145,44 @@ APPLICATION_IDS = {
     16777265: "SWx (3GPP WLAN Authentication)",
     16777266: "Gxx (3GPP Gateway Control)",
     16777267: "S9 (3GPP Roaming Policy)",
+    16777268: "Zpn (3GPP)",
     16777272: "S6b (3GPP PDN GW-3GPP AAA)",
     16777291: "SLh (3GPP Location Services)",
+    16777292: "SGmb (3GPP)",
     16777302: "Sy (3GPP Policy Counters)",
     16777303: "Sd (3GPP TDF)",
+    16777304: "Ericsson Sy",
     16777308: "S7a (3GPP Policy Control)",
+    16777309: "Tsp (3GPP)",
     16777310: "S6m (3GPP MTC)",
+    16777311: "T4 (3GPP)",
     16777312: "S6c (3GPP SMS)",
     16777313: "SGd/Gdd (3GPP SGSN/GGSN)",
     16777318: "S15 (3GPP Congestion Management)",
+    16777319: "S9a (3GPP)",
+    16777320: "S9a* (3GPP)",
     16777345: "S6t (3GPP HSS-SCEF)",
     16777346: "T6a/T6b (3GPP SCEF-MME/SGSN)",
+    16777335: "MB2-C (3GPP)",
+    16777336: "PC4a (3GPP)",
+    16777337: "PC2 (3GPP)",
+    16777340: "PC6/PC7 (3GPP)",
+    16777342: "Np (3GPP)",
+    4294967295: "Relay",
 }
 
 # 3GPP Vendor ID (hidden in output for cleaner display)
 VENDOR_3GPP = 10415
+
+# OctetString AVPs that hold a bare IP address (no address family prefix).
+# (vendor id, code) -> byte length
+RAW_IP_AVPS = {
+    (0, 8): 4,                 # Framed-IP-Address
+    (VENDOR_3GPP, 6): 4,       # 3GPP-SGSN-Address
+    (VENDOR_3GPP, 7): 4,       # 3GPP-GGSN-Address
+    (VENDOR_3GPP, 15): 16,     # 3GPP-SGSN-IPv6-Address
+    (VENDOR_3GPP, 16): 16,     # 3GPP-GGSN-IPv6-Address
+}
 
 HEADER_LEN = 20
 MAX_DEPTH = 16
@@ -115,7 +190,11 @@ _NTP_EPOCH = datetime(1900, 1, 1, tzinfo=timezone.utc)
 
 
 def command_name(app_id: int, code: int, request: bool = True) -> str:
-    entry = APP_COMMAND_CODES.get(app_id, {}).get(code) or BASE_COMMAND_CODES.get(code)
+    entry = (
+        APP_COMMAND_CODES.get(app_id, {}).get(code)
+        or BASE_COMMAND_CODES.get(code)
+        or VENDOR_COMMAND_CODES.get(code)
+    )
     if not entry:
         return "Unknown"
     req, ans, base = entry
@@ -271,6 +350,8 @@ class DiameterDecoder:
         except (ValueError, UnicodeDecodeError, OverflowError):
             pass
         # OctetString, or a value that did not fit its type
+        if RAW_IP_AVPS.get((avp.vendor_id, avp.code)) == len(b):
+            return str(ip_address(b))
         if type_name == "AvpOctetString" and b:
             try:
                 s = b.decode("utf-8")
