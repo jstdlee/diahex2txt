@@ -1,15 +1,18 @@
 import binascii
-from typing import List, Any, Union
-from diameter.message import Message, Avp, AvpGrouped
+import re
+import struct
+from datetime import datetime, timedelta, timezone
+from ipaddress import ip_address
+from typing import List, Optional, Tuple
 from diameter.message.avp.dictionary import AVP_DICTIONARY, AVP_VENDOR_DICTIONARY
 
-# Command Code descriptions - 3GPP LTE Diameter Interfaces
-COMMAND_CODES = {
-    # Base Diameter Protocol (RFC 6733)
+# Command code names. Base commands apply to every application.
+BASE_COMMAND_CODES = {
     257: "CER (Capabilities-Exchange-Request)",
     258: "CEA (Capabilities-Exchange-Answer)",
     265: "AAR (AA-Request)",
     266: "AAA (AA-Answer)",
+    268: "DER (Diameter-EAP-Request)",
     271: "ACR (Accounting-Request)",
     272: "CCR (Credit-Control-Request)",
     273: "CCA (Credit-Control-Answer)",
@@ -20,77 +23,72 @@ COMMAND_CODES = {
     282: "DPR (Disconnect-Peer-Request)",
     283: "DPA (Disconnect-Peer-Answer)",
     291: "STR (Session-Termination-Request)",
-    
-    # S6a/S6d Interface (EPS Mobility Management)
-    316: "ULR (Update-Location-Request)",
-    317: "ULA (Update-Location-Answer)",
-    318: "AIR (Authentication-Information-Request)",
-    319: "AIA (Authentication-Information-Answer)",
-    320: "IDR (Insert-Subscriber-Data-Request)",
-    321: "IDA (Insert-Subscriber-Data-Answer)",
-    322: "DSR (Delete-Subscriber-Data-Request)",
-    323: "DSA (Delete-Subscriber-Data-Answer)",
-    324: "PUR (Purge-UE-Request)",
-    325: "PUA (Purge-UE-Answer)",
-    326: "RER (Reset-Request)",
-    327: "REA (Reset-Answer)",
-    328: "NOR (Notify-Request)",
-    329: "NOA (Notify-Answer)",
-    
-    # S13/S13' Interface (ME Identity Check)
-    324: "ECR (ECR-Request)",  # Note: Reused code 324
-    325: "ECA (ECA-Answer)",   # Note: Reused code 325
-    
-    # SWx Interface (WLAN Authentication)
-    303: "MAR (Multimedia-Auth-Request)",
-    304: "MAA (Multimedia-Auth-Answer)",
-    301: "SAR (Server-Assignment-Request)",
-    302: "SAA (Server-Assignment-Answer)",
-    287: "RTR (Registration-Termination-Request)",
-    288: "RTA (Registration-Termination-Answer)",
-    305: "PPR (Push-Profile-Request)",
-    306: "PPA (Push-Profile-Answer)",
-    
-    # Cx/Dx Interface (IMS Subscription)
-    300: "UAR (User-Authorization-Request)",
-    301: "UAA (User-Authorization-Answer)",
-    # 301-306 shared with SWx above
-    
-    # Sh Interface (Application Server - HSS)
-    306: "UDR (User-Data-Request)",
-    307: "UDA (User-Data-Answer)",
-    308: "PUR (Profile-Update-Request)",
-    309: "PUA (Profile-Update-Answer)",
-    310: "SNR (Subscribe-Notifications-Request)",
-    311: "SNA (Subscribe-Notifications-Answer)",
-    312: "PNR (Push-Notification-Request)",
-    313: "PNA (Push-Notification-Answer)",
-    
-    # Sy Interface (Policy Counter Status)
-    8388635: "SLR (Spending-Limit-Request)",
-    8388636: "SLA (Spending-Limit-Answer)",
-    8388637: "SNR (Spending-Status-Notification-Request)",
-    8388638: "SNA (Spending-Status-Notification-Answer)",
-    
-    # Gx Interface (Policy Control - already covered by CCR/CCA)
+    292: "STA (Session-Termination-Answer)",
     8388620: "RAR (Re-Auth-Request)",
     8388621: "RAA (Re-Auth-Answer)",
-    
-    # Rx Interface (Application - PCRF)
-    # Uses AAR/AAA (265/266), STR/STA (291/292), ASR/ASA (274/275)
-    292: "STA (Session-Termination-Answer)",
-    
-    # S9 Interface (Roaming Policy Control)
-    # Uses CCR/CCA (272/273), RAR/RAA (8388620/8388621)
-    
-    # Sd Interface (TDF - PCRF)
-    # Uses CCR/CCA, RAR/RAA
-    
-    # S6c Interface (SMS over IP)
-    8388647: "SRR (Send-Routing-Info-Request)",
-    8388648: "SRA (Send-Routing-Info-Answer)",
-    8388645: "ALR (Alert-Service-Centre-Request)",
-    8388646: "ALA (Alert-Service-Centre-Answer)",
+}
+
+# Command names that depend on the application (same code, different meaning).
+APP_COMMAND_CODES = {
+    # S6a/S6d
+    16777251: {
+        316: "ULR (Update-Location-Request)",
+        317: "ULA (Update-Location-Answer)",
+        318: "AIR (Authentication-Information-Request)",
+        319: "AIA (Authentication-Information-Answer)",
+        320: "IDR (Insert-Subscriber-Data-Request)",
+        321: "IDA (Insert-Subscriber-Data-Answer)",
+        322: "DSR (Delete-Subscriber-Data-Request)",
+        323: "DSA (Delete-Subscriber-Data-Answer)",
+        324: "PUR (Purge-UE-Request)",
+        325: "PUA (Purge-UE-Answer)",
+        326: "RSR (Reset-Request)",
+        327: "RSA (Reset-Answer)",
+        328: "NR (Notify-Request)",
+        329: "NA (Notify-Answer)",
+    },
+    # Cx/Dx
+    16777216: {
+        300: "UAR (User-Authorization-Request)",
+        301: "UAA (User-Authorization-Answer)",
+        302: "SAR (Server-Assignment-Request)",
+        303: "SAA (Server-Assignment-Answer)",
+        304: "LIR (Location-Info-Request)",
+        305: "LIA (Location-Info-Answer)",
+        306: "MAR (Multimedia-Auth-Request)",
+        307: "MAA (Multimedia-Auth-Answer)",
+        308: "RTR (Registration-Termination-Request)",
+        309: "RTA (Registration-Termination-Answer)",
+        310: "PPR (Push-Profile-Request)",
+        311: "PPA (Push-Profile-Answer)",
+    },
+    # SWx
+    16777265: {
+        300: "SAR (Server-Assignment-Request)",
+        301: "SAA (Server-Assignment-Answer)",
+        303: "MAR (Multimedia-Auth-Request)",
+        304: "MAA (Multimedia-Auth-Answer)",
+        305: "RTR (Registration-Termination-Request)",
+        306: "RTA (Registration-Termination-Answer)",
+        307: "PPR (Push-Profile-Request)",
+        308: "PPA (Push-Profile-Answer)",
+    },
+    # Sh
+    16777217: {
+        306: "UDR (User-Data-Request)",
+        307: "UDA (User-Data-Answer)",
+        308: "PUR (Profile-Update-Request)",
+        309: "PUA (Profile-Update-Answer)",
+        310: "SNR (Subscribe-Notifications-Request)",
+        311: "SNA (Subscribe-Notifications-Answer)",
+        312: "PNR (Push-Notification-Request)",
+        313: "PNA (Push-Notification-Answer)",
+    },
+    # S13
+    16777252: {
+        324: "ECR (ME-Identity-Check-Request)",
+        325: "ECA (ME-Identity-Check-Answer)",
+    },
 }
 
 # Application ID descriptions - 3GPP LTE Interfaces
@@ -108,10 +106,9 @@ APPLICATION_IDS = {
     16777216: "Cx/Dx (3GPP IMS Subscription)",
     16777217: "Sh (3GPP AS-HSS)",
     16777222: "Ro (3GPP Online Charging)",
-    16777223: "Rf (3GPP Offline Charging)",
     16777229: "SWm (3GPP WLAN-AAA)",
     16777238: "Gx (3GPP Policy Control)",
-    16777250: "SWx (3GPP WLAN Authentication)",
+    16777265: "SWx (3GPP WLAN Authentication)",
     16777251: "S6a/S6d (3GPP Mobility Management)",
     16777252: "S13/S13' (3GPP ME Identity Check)",
     16777261: "S6c (3GPP SMS)",
@@ -128,241 +125,196 @@ APPLICATION_IDS = {
     
     # Additional 3GPP Interfaces
     16777219: "Pr (3GPP Presence)",
-    16777231: "STa (3GPP Trusted WLAN Access)",
-    16777250: "SWx (3GPP AAA-HSS)",
-    16777265: "Gmb (3GPP GGSN-BM-SC)",
+    16777250: "STa (3GPP Trusted WLAN Access)",
+    16777223: "Gmb (3GPP GGSN-BM-SC)",
     16777281: "Mm10 (3GPP IMS Service Control)",
     16777308: "S15 (3GPP CS-PS Coordination)",
 }
 
-# 3GPP Vendor ID (simplified display)
+# 3GPP Vendor ID (hidden in output for cleaner display)
 VENDOR_3GPP = 10415
+
+HEADER_LEN = 20
+MAX_DEPTH = 16
+_NTP_EPOCH = datetime(1900, 1, 1, tzinfo=timezone.utc)
+
+
+def command_name(app_id: int, code: int) -> str:
+    return APP_COMMAND_CODES.get(app_id, {}).get(code) or BASE_COMMAND_CODES.get(code, "Unknown")
+
+
+class _Avp:
+    """Minimal parsed AVP: header fields plus raw payload."""
+
+    def __init__(self, code, flags, vendor_id, data):
+        self.code, self.flags, self.vendor_id, self.data = code, flags, vendor_id, data
+
 
 class DiameterDecoder:
     def decode(self, hex_input: str) -> str:
-        # Clean input
-        cleaned_hex = hex_input.strip().replace(" ", "").replace("\n", "").replace("0x", "")
-        
-        # Validation
-        if not cleaned_hex:
+        """Decode one or more concatenated hex-encoded Diameter messages."""
+        # Strip a 0x prefix from the input and from each whitespace-separated chunk
+        chunks = [re.sub(r"^0[xX]", "", c) for c in (hex_input or "").split()]
+        cleaned = "".join(chunks)
+        if not cleaned:
             return "Error: Empty input provided."
+        if len(cleaned) % 2 != 0:
+            return "Error: Invalid hex string (odd number of digits)."
         try:
-            # Ensure even length
-            if len(cleaned_hex) % 2 != 0:
-                 cleaned_hex = "0" + cleaned_hex
-            data = binascii.unhexlify(cleaned_hex)
-        except binascii.Error:
+            data = binascii.unhexlify(cleaned)
+        except (binascii.Error, ValueError):
             return "Error: Invalid hex string."
-        except Exception as e:
-            return f"Error converting hex to bytes: {e}"
 
-        try:
-            # Parse message
-            # Message.from_bytes(data) returns a Message instance
-            msg = Message.from_bytes(data)
-        except Exception as e:
-            return f"Error decoding Diameter message: {e}\n(Ensure the hex includes the full Diameter header and payload)"
-
-        output = []
-        
-        # --- Header ---
-        h = msg.header
-        output.append("Diameter Header:")
-        
-        # Flags
-        flags = []
-        if h.is_request: flags.append("Request")
-        if h.is_proxyable: flags.append("Proxiable")
-        if h.is_error: flags.append("Error")
-        if h.is_retransmit: flags.append("Retransmitted")
-        flags_str = ", ".join(flags) if flags else "None"
-        
-        # Command Code with description
-        cmd_desc = COMMAND_CODES.get(h.command_code, "Unknown")
-        
-        # Application ID with description
-        app_desc = APPLICATION_IDS.get(h.application_id, "Unknown")
-        
-        output.append(f"  Version:      {h.version}")
-        output.append(f"  Length:       {h.length}")
-        output.append(f"  Flags:        {h.command_flags:#02x} ({flags_str})")
-        output.append(f"  Code:         {h.command_code} - {cmd_desc}")
-        output.append(f"  App ID:       {h.application_id} - {app_desc}")
-        output.append(f"  Hop-by-Hop:   {h.hop_by_hop_identifier:#010x}")
-        output.append(f"  End-to-End:   {h.end_to_end_identifier:#010x}")
-        output.append("")
-        
-        output.append("AVPs:")
-        
-        # --- AVPs ---
-        # Attempt to retrieve AVPs from the message.
-        # python-diameter usually stores them in _avps list in order of appearance
-        avp_list = []
-        if hasattr(msg, '_avps') and isinstance(msg._avps, list) and len(msg._avps) > 0:
-             avp_list = msg._avps
-        elif not avp_list:
-             # For typed messages where AVPs are consumed, manually parse from bytes
-             # This preserves the original wire order
-             try:
-                 avp_list = self._parse_avps_from_bytes(data[20:])  # Skip 20-byte header
-             except Exception as e:
-                 output.append(f"  (Warning: Could not parse raw AVPs: {e})")
-                 avp_list = []
-
-        if avp_list:
-            for avp in avp_list:
-                output.extend(self._format_avp(avp, level=0))
-        else:
-            output.append("  No AVPs found or unable to extract.")
-
-        return "\n".join(output)
-    
-    def _parse_avps_from_bytes(self, avp_data: bytes) -> List[Avp]:
-        """Manually parse AVPs from raw bytes to preserve order."""
-        from diameter.message.packer import Unpacker
-        
-        avps = []
-        unpacker = Unpacker(avp_data)
-        
-        while unpacker.get_position() < len(avp_data):
-            try:
-                avp = Avp.from_unpacker(unpacker)
-                avps.append(avp)
-            except Exception:
-                # Stop on error (end of data or malformed AVP)
+        outputs = []
+        pos = 0
+        while pos < len(data):
+            rest = data[pos:]
+            if len(rest) < HEADER_LEN:
+                outputs.append(
+                    f"Error decoding Diameter message: truncated header ({len(rest)} of {HEADER_LEN} bytes)."
+                )
                 break
-                
-        return avps
+            length = int.from_bytes(rest[1:4], "big")
+            if length < HEADER_LEN:
+                outputs.append(f"Error decoding Diameter message: invalid message length {length}.")
+                break
+            if length > len(rest):
+                outputs.append(
+                    f"Error decoding Diameter message: truncated message "
+                    f"(header says {length} bytes, got {len(rest)})."
+                )
+                break
+            outputs.append(self._decode_message(rest[:length]))
+            pos += length
+        if len(outputs) > 1:
+            outputs = [f"=== Message {i} ===\n{o}" for i, o in enumerate(outputs, 1)]
+        return "\n\n".join(outputs)
 
-    def _format_attribute(self, name: str, value: Any, level: int) -> List[str]:
-        # Formatter for attribute-based AVPs
-        indent = "  " * (level + 1)
-        lines = []
-        
-        # Handle simple types first
-        if value is None:
-             lines.append(f"{indent}{name}: None")
-             return lines
-             
-        from datetime import datetime, date, time
-        if isinstance(value, (str, int, float, bool, datetime, date, time)):
-             lines.append(f"{indent}{name}: {value}")
-             return lines
-             
-        if isinstance(value, bytes):
-             try:
-                 val_str = value.decode('utf-8')
-                 # Check if it looks like a meaningful string (optional, but good for safety)
-                 if not val_str.isprintable(): 
-                      raise ValueError
-             except:
-                 val_str = f"0x{binascii.hexlify(value).decode()}"
-             lines.append(f"{indent}{name}: {val_str}")
-             return lines
+    def _decode_message(self, msg: bytes) -> str:
+        version = msg[0]
+        length = int.from_bytes(msg[1:4], "big")
+        flags = msg[4]
+        code = int.from_bytes(msg[5:8], "big")
+        app_id, hbh, e2e = struct.unpack(">III", msg[8:20])
 
-        # Handle List
-        if isinstance(value, list):
-             lines.append(f"{indent}{name}: (List)")
-             for item in value:
-                  lines.extend(self._format_attribute("Item", item, level + 1))
-             return lines
-        
-        # Handle Complex Objects
-        # We assume anything else might be a container object (like MultipleServicesCreditControl)
-        # We want to print its class name and then its attributes
-        type_name = type(value).__name__
-        lines.append(f"{indent}{name}: {type_name}")
-        
-        # Extract meaningful attributes
-        # Filter out privates, callables, and metadata like 'avp', 'header'
+        flag_names = []
+        if flags & 0x80: flag_names.append("Request")
+        if flags & 0x40: flag_names.append("Proxiable")
+        if flags & 0x20: flag_names.append("Error")
+        if flags & 0x10: flag_names.append("Retransmitted")
+        flags_str = ", ".join(flag_names) if flag_names else "None"
+
+        out = [
+            "Diameter Header:",
+            f"  Version:      {version}",
+            f"  Length:       {length}",
+            f"  Flags:        {flags:#04x} ({flags_str})",
+            f"  Code:         {code} - {command_name(app_id, code)}",
+            f"  App ID:       {app_id} - {APPLICATION_IDS.get(app_id, 'Unknown')}",
+            f"  Hop-by-Hop:   {hbh:#010x}",
+            f"  End-to-End:   {e2e:#010x}",
+            "",
+            "AVPs:",
+        ]
+        if len(msg) == HEADER_LEN:
+            out.append("  (none - header-only message)")
+            return "\n".join(out)
+        lines, err = self._format_avps(msg[HEADER_LEN:], 0)
+        out.extend(lines)
+        if err:
+            out.append(f"  (Warning: {err})")
+        return "\n".join(out)
+
+    # -- AVP parsing -------------------------------------------------------
+    @staticmethod
+    def _parse_avps(buf: bytes) -> Tuple[List[_Avp], Optional[str]]:
+        """Parse AVPs from raw bytes. Returns (avps, error); stops at the first bad AVP."""
+        avps, pos = [], 0
+        while pos < len(buf):
+            if len(buf) - pos < 8:
+                return avps, f"truncated AVP header at offset {pos}"
+            code = int.from_bytes(buf[pos:pos + 4], "big")
+            flags = buf[pos + 4]
+            length = int.from_bytes(buf[pos + 5:pos + 8], "big")
+            hdr = 12 if flags & 0x80 else 8
+            if length < hdr:
+                return avps, f"invalid AVP length {length} for AVP code {code}"
+            if pos + length > len(buf):
+                return avps, f"AVP code {code} length {length} exceeds remaining {len(buf) - pos} bytes"
+            vendor = int.from_bytes(buf[pos + 8:pos + 12], "big") if flags & 0x80 else 0
+            avps.append(_Avp(code, flags, vendor, buf[pos + hdr:pos + length]))
+            pos += (length + 3) & ~3  # AVPs are padded to 4 bytes
+        return avps, None
+
+    def _format_avps(self, buf: bytes, level: int) -> Tuple[List[str], Optional[str]]:
+        avps, err = self._parse_avps(buf)
+        lines: List[str] = []
+        for avp in avps:
+            lines.extend(self._format_avp(avp, level))
+        return lines, err
+
+    def _lookup(self, avp: _Avp) -> Optional[dict]:
+        if avp.vendor_id:
+            return AVP_VENDOR_DICTIONARY.get(avp.vendor_id, {}).get(avp.code)
+        return AVP_DICTIONARY.get(avp.code)
+
+    def _get_avp_name(self, avp: _Avp) -> str:
+        d = self._lookup(avp)
+        if d:
+            return d.get("name", "Unknown")
+        return "Unknown-Vendor-Specific-AVP" if avp.vendor_id else "Unknown-AVP"
+
+    @staticmethod
+    def _hex(b: bytes) -> str:
+        return "0x" + binascii.hexlify(b).decode()
+
+    def _format_value(self, avp: _Avp, type_name: str) -> str:
+        b = avp.data
         try:
-            # vars() works if __dict__ exists
-            attrs = [k for k in vars(value) if not k.startswith("_")]
-        except TypeError:
-            # fallback for objects without __dict__ (e.g. slots, though unusual here)
-            attrs = [k for k in dir(value) if not k.startswith("_") and not callable(getattr(value, k))]
-            
-        # Specific exclusions if needed
-        attrs = [k for k in attrs if k not in ("header", "avp_code", "avp_vendor", "is_mandatory", "is_private")]
-        
-        if not attrs:
-             # Fallback to str() if no attrs found
-             pass # Already printed Name: TypeName, maybe append str? 
-             # actually let's just leave it as TypeName or try str(value) if we prefer
-             # but user wants expansion. If empty, maybe it's effectively empty.
-        else:
-             for attr_name in attrs:
-                 val = getattr(value, attr_name)
-                 lines.extend(self._format_attribute(attr_name, val, level + 1))
-                 
-        return lines
+            if type_name in ("AvpUnsigned32", "AvpUnsigned64", "AvpInteger32", "AvpInteger64", "AvpEnumerated"):
+                width = 8 if type_name.endswith("64") else 4
+                if len(b) == width:
+                    return str(int.from_bytes(b, "big", signed=type_name.startswith("AvpInteger") or type_name == "AvpEnumerated"))
+            elif type_name == "AvpUtf8String":
+                return b.decode("utf-8")
+            elif type_name == "AvpAddress":
+                fam = int.from_bytes(b[:2], "big")
+                if fam == 1 and len(b) == 6:
+                    return str(ip_address(b[2:]))
+                if fam == 2 and len(b) == 18:
+                    return str(ip_address(b[2:]))
+            elif type_name == "AvpTime" and len(b) == 4:
+                return str(_NTP_EPOCH + timedelta(seconds=int.from_bytes(b, "big")))
+            elif type_name == "AvpFloat32" and len(b) == 4:
+                return str(struct.unpack(">f", b)[0])
+            elif type_name == "AvpFloat64" and len(b) == 8:
+                return str(struct.unpack(">d", b)[0])
+        except (ValueError, UnicodeDecodeError, OverflowError):
+            pass
+        # OctetString, or a value that did not fit its type
+        if type_name == "AvpOctetString" and b:
+            try:
+                s = b.decode("utf-8")
+                if s.isprintable():
+                    return s
+            except UnicodeDecodeError:
+                pass
+        return self._hex(b)
 
-    def _format_avp(self, avp: Avp, level: int) -> List[str]:
-        lines = []
+    def _format_avp(self, avp: _Avp, level: int) -> List[str]:
         indent = "  " * (level + 1)
-        
-        # Get Name
         name = self._get_avp_name(avp)
-        
-        is_grouped = isinstance(avp, AvpGrouped)
-        
-        # Determine value display
-        if is_grouped:
-            # Header line for grouped
-            # Name (Code):
-            # Hide vendor ID 10415 (3GPP) for cleaner output
-            vid_str = ""
-            if avp.vendor_id and avp.vendor_id != VENDOR_3GPP:
-                vid_str = f", Vendor-ID: {avp.vendor_id}"
-            lines.append(f"{indent}{name} (Code: {avp.code}{vid_str})")
-            
-            # Recurse
-            # If standard grouped logic didn't populate _avps, look at .value
-            if hasattr(avp, '_avps') and isinstance(avp._avps, list):
-                  for sub_avp in avp._avps:
-                       lines.extend(self._format_avp(sub_avp, level + 1))
-            elif isinstance(avp.value, list):
-                  for sub in avp.value:
-                      if isinstance(sub, Avp):
-                          lines.extend(self._format_avp(sub, level + 1))
-                      else:
-                          # Unexpected content in grouped AVP
-                          lines.extend(self._format_attribute("Value", sub, level + 1))
-        else:
-            # Basic value
-            val = avp.value
-            val_str = ""
-            if isinstance(val, bytes):
-                try:
-                    # Try utf-8
-                    val_str = val.decode("utf-8")
-                    if not val_str.isprintable():
-                         val_str = f"0x{binascii.hexlify(val).decode()}"
-                except:
-                    val_str = f"0x{binascii.hexlify(val).decode()}"
-            else:
-                val_str = str(val)
-
-            # Hide vendor ID 10415 (3GPP) for cleaner output
-            vid_str = ""
-            if avp.vendor_id and avp.vendor_id != VENDOR_3GPP:
-                vid_str = f", Vendor-ID: {avp.vendor_id}"
-            header_line = f"{indent}{name} (Code: {avp.code}{vid_str}): {val_str}"
-            lines.append(header_line)
-        
-        return lines
-
-    def _get_avp_name(self, avp: Avp) -> str:
-        # Check standard dictionary
-        # dictionary[code] -> definition
-        if avp.code in AVP_DICTIONARY:
-             # definition is a dict
-             return AVP_DICTIONARY[avp.code].get('name', 'Unknown')
-        
-        # Check vendor
-        if avp.vendor_id and avp.vendor_id in AVP_VENDOR_DICTIONARY:
-             v_dict = AVP_VENDOR_DICTIONARY[avp.vendor_id]
-             if avp.code in v_dict:
-                 return v_dict[avp.code].get('name', 'Unknown-Vendor-Specific')
-                 
-        return "Unknown-AVP"
+        vid = f", Vendor-ID: {avp.vendor_id}" if avp.vendor_id and avp.vendor_id != VENDOR_3GPP else ""
+        head = f"{indent}{name} (Code: {avp.code}{vid})"
+        d = self._lookup(avp)
+        type_name = d["type"].__name__ if d and "type" in d else "AvpOctetString"
+        if type_name == "AvpGrouped":
+            if level >= MAX_DEPTH:
+                return [head + ": (nesting too deep)"]
+            lines = [head]
+            sub, err = self._format_avps(avp.data, level + 1)
+            lines.extend(sub)
+            if err:
+                lines.append(f"{indent}  (Warning: {err})")
+            return lines
+        return [f"{head}: {self._format_value(avp, type_name)}"]
